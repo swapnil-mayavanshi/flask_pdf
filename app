@@ -9,19 +9,21 @@ app = Flask(__name__)
 UPLOAD_FOLDER = tempfile.gettempdir()
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- FIXED CONFIGURATION ---
-FONT_PATH = "times.ttf"  # You can ignore this if you use built-in fonts
-PREFERRED_SIZE = 11
-EXPAND = 2.5  # Amount to expand the redaction box
-Y_SHIFT = 10
-# ---------------------------
+# --- CONFIGURATION ---
+FONT_PATH = "times.ttf"  # You can ignore this if using built-in fonts
+PREFERRED_SIZE = 11       # Font size for inserted text
+EXPAND = 0                # Padding for redaction area
+Y_SHIFT = 10              # Vertical offset for inserted text
+UNDERLINE_OFFSET = 2      # How far below the text to draw underline
+UNDERLINE_THICKNESS = 1   # Thickness of the underline
+# ----------------------
 
 def process_pdf(pdf_path, output_path, search_str, replace_str):
     doc = fitz.open(pdf_path)
     for page in doc:
         areas = page.search_for(search_str)
-        # Step 1: Expand each area before redacting
         expanded_areas = []
+
         for area in areas:
             expanded_area = fitz.Rect(
                 area.x0 - EXPAND,
@@ -29,16 +31,20 @@ def process_pdf(pdf_path, output_path, search_str, replace_str):
                 area.x1 + EXPAND,
                 area.y1 + EXPAND
             )
-            page.add_redact_annot(expanded_area, fill=(1, 1, 1))
-            expanded_areas.append((area, expanded_area))  # Keep original + expanded
+            page.add_redact_annot(expanded_area, fill=(1, 1, 1))  # White background
+            expanded_areas.append((area, expanded_area))
 
-        # Step 2: Apply redaction (whiteout)
         page.apply_redactions()
 
-        # Step 3: Add replacement text at adjusted Y position
         for original_area, _ in expanded_areas:
             new_position = fitz.Point(original_area.x0, original_area.y0 + Y_SHIFT)
             page.insert_text(new_position, replace_str, fontsize=PREFERRED_SIZE, fontname="times-roman", color=(0, 0, 0))
+
+            # Draw underline
+            underline_y = new_position.y + UNDERLINE_OFFSET
+            underline_start = fitz.Point(original_area.x0, underline_y)
+            underline_end = fitz.Point(original_area.x0 + page.get_text_length(replace_str, fontname="times-roman", fontsize=PREFERRED_SIZE), underline_y)
+            page.draw_line(underline_start, underline_end, color=(0, 0, 0), width=UNDERLINE_THICKNESS)
 
     doc.save(output_path)
     doc.close()
@@ -63,7 +69,7 @@ def index():
                 process_pdf(data_path, outpath, search_str, replace_str)
                 return outpath
             else:
-                return None  # Ignore other types
+                return None
 
         file_path = os.path.join(temp_dir, uploaded_file.filename)
         uploaded_file.save(file_path)
