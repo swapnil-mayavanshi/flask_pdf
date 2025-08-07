@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Multi-Format Bulk Text Replacer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            background: #f4f6fa;
+            min-height: 100vh;
+            min-width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: #ffffff;
+            border-radius: 18px;
+            max-width: 540px;
+            width: 90vw;
+            min-height: 480px;
+            padding: 36px 38px 32px 38px;
+            margin: auto;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e6ee;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .logo {
+            position: absolute;
+            top: 18px;
+            left: 20px;
+            width: 38px;
+            height: auto;
+        }
+
+        h2 {
+            text-align: center;
+            color: #1e1e2f;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 32px;
+        }
+
+        label {
+            font-weight: 500;
+            color: #444b59;
+            margin-bottom: 6px;
+            margin-top: 16px;
+            display: block;
+            font-size: 0.95rem;
+        }
+
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 11px 10px;
+            margin-bottom: 14px;
+            border-radius: 8px;
+            border: 1px solid #d0d6e2;
+            background: #fdfdfd;
+            color: #1a1a1a;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+            transition: border 0.23s, background 0.23s;
+        }
+
+        input[type="text"]:focus, input[type="file"]:focus {
+            border-color: #4a90e2;
+            background: #ffffff;
+        }
+
+        button {
+            width: 100%;
+            background: #4a90e2;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 14px 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(74,144,226,0.3);
+            transition: background 0.25s ease;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2c79d6;
+        }
+
+        .info {
+            margin-top: 8px;
+            color: #6c778d;
+            font-size: 13.5px;
+            line-height: 1.6;
+            background: #f1f3f9;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: left;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 24px 24px 28px 24px;
+                max-width: 96vw;
+            }
+            .logo {
+                width: 32px;
+                top: 14px;
+                left: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="/static/logo.png" alt="Logo" class="logo">
+        <h2>Multi-Format Bulk Text Replacer</h2>
+        <form method="post" enctype="multipart/form-data">
+            <label>Data file (.pdf, .csv, .xpt, or .zip):</label>
+            <input type="file" name="data_file" accept=".pdf,.csv,.xpt,.zip" required>
+
+            <label>Word to replace:</label>
+            <input type="text" name="search_str" value="" required>
+
+            <label>Replacement word:</label>
+            <input type="text" name="replace_str" value="" required>
+
+            <button type="submit">Replace & Download as ZIP</button>
+        </form>
+        <div class="info">
+            Upload PDF, CSV, XPT, or a ZIP of files.<br>
+            All processed files will be zipped for download.<br>
+            PDF editing uses the <code>times.ttf</code> font in your app folder.
+        </div>
+    </div>
+</body>
+</html>
