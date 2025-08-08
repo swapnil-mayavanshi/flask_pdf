@@ -1,142 +1,71 @@
 # To run this script, you first need to install the PyMuPDF library.
-
 # You can do this by opening your terminal or command prompt and running:
-
 # pip install PyMuPDF
 
-
-
-import fitz  # PyMuPDF is also known as "fitz"
-
+import fitz  # PyMuPDF is also known as "fitz"
 import os
 
-
-
 def replace_text_in_pdf(input_pdf_path, output_pdf_path, old_text, new_text):
+    """
+    Finds and replaces a specific string of text in a PDF document by
+    redacting (permanently deleting) the old text and then inserting the
+    new text in its place. This is a robust two-phase approach that can
+    also use a custom font.
+    """
+    try:
+        # Open the input PDF document
+        pdf_document = fitz.open(input_pdf_path)
 
-    """
+        font_name = "Times-Roman"
+        
+        # Iterate through each page of the document
+        for page_number in range(len(pdf_document)):
+            page = pdf_document.load_page(page_number)
+            
+            # Phase 1: Redaction and Deletion
+            text_instances = page.search_for(old_text)
+            
+            if text_instances:
+                original_text_info = page.get_text("dict")['blocks']
+                
+                for rect in text_instances:
+                    page.add_redact_annot(rect)
+                page.apply_redactions()
 
-    Finds and replaces a specific string of text in a PDF document by
+                # Phase 2: Text Insertion
+                for rect in text_instances:
+                    original_fontsize = 12
+                    for block in original_text_info:
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                if old_text in span["text"]:
+                                    original_fontsize = span["size"]
+                                    break
+                            else:
+                                continue
+                            break
+                        else:
+                            continue
+                        break
 
-    redacting (permanently deleting) the old text and then inserting the
+                    font_params = {
+                        'fontsize': original_fontsize,
+                        'fontname': font_name
+                    }
+                    # Adjust baseline by subtracting a smaller value from y
+                    insert_point = fitz.Point(rect.x0, rect.y1 + -2.3)
+                    page.insert_text(insert_point, new_text, **font_params)
+                    
+        pdf_document.save(output_pdf_path)
+        print(f"Successfully created '{output_pdf_path}' with text replaced.")
 
-    new text in its place. This is a robust two-phase approach that can
-
-    also use a custom font.
-
-    """
-
-    try:
-
-        # Open the input PDF document
-
-        pdf_document = fitz.open(input_pdf_path)
-
-
-
-        font_name = "Times-Roman"
-
-       
-
-        # Iterate through each page of the document
-
-        for page_number in range(len(pdf_document)):
-
-            page = pdf_document.load_page(page_number)
-
-           
-
-            # Phase 1: Redaction and Deletion
-
-            text_instances = page.search_for(old_text)
-
-           
-
-            if text_instances:
-
-                original_text_info = page.get_text("dict")['blocks']
-
-               
-
-                for rect in text_instances:
-
-                    page.add_redact_annot(rect)
-
-                page.apply_redactions()
-
-
-
-                # Phase 2: Text Insertion
-
-                for rect in text_instances:
-
-                    original_fontsize = 12
-
-                    for block in original_text_info:
-
-                        for line in block.get("lines", []):
-
-                            for span in line.get("spans", []):
-
-                                if old_text in span["text"]:
-
-                                    original_fontsize = span["size"]
-
-                                    break
-
-                            else:
-
-                                continue
-
-                            break
-
-                        else:
-
-                            continue
-
-                        break
-
-
-
-                    font_params = {
-
-                        'fontsize': original_fontsize,
-
-                        'fontname': font_name
-
-                    }
-
-                    # Adjust baseline by subtracting a smaller value from y
-
-                    insert_point = fitz.Point(rect.x0, rect.y1 + -2.3)
-
-                    page.insert_text(insert_point, new_text, **font_params)
-
-                   
-
-        pdf_document.save(output_pdf_path)
-
-        print(f"Successfully created '{output_pdf_path}' with text replaced.")
-
-
-
-    except Exception as e:
-
-        print(f"An error occurred: {e}")
-
-
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 # --- Example Usage ---
-
 input_file = "input.pdf"
-
 output_file = "modified.pdf"
-
 text_to_find = "SDTM"
-
 text_to_replace = "MTSD"
 
-
-
 replace_text_in_pdf(input_file, output_file, text_to_find, text_to_replace)
-
