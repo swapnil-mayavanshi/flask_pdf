@@ -1,28 +1,27 @@
-# To run this script, you first need to install the PyMuPDF library.
-# You can do this by opening your terminal or command prompt and running:
-# pip install PyMuPDF
-
-import fitz  # PyMuPDF is also known as "fitz"
+import fitz 
 import os
+from flask import Flask, render_template, request, send_file
+import uuid # For generating unique filenames
 
-def replace_text_in_pdf(input_pdf_path, output_pdf_path, old_text, new_text):
+app = Flask(__name__)
+# Set a secret key for session management, required for some Flask extensions
+app.config['SECRET_KEY'] = 'a_very_secret_key_for_session'
+
+# Define the upload folder
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def replace_text_in_pdf(input_pdf_path, old_text, new_text):
     """
-    Finds and replaces a specific string of text in a PDF document by
-    redacting (permanently deleting) the old text and then inserting the
-    new text in its place. This is a robust two-phase approach that can
-    also use a custom font.
+    Finds and replaces a specific string of text in a PDF document.
+    Returns the path to the modified PDF.
     """
     try:
-        # Open the input PDF document
         pdf_document = fitz.open(input_pdf_path)
-
         font_name = "Times-Roman"
         
-        # Iterate through each page of the document
-        for page_number in range(len(pdf_document)):
-            page = pdf_document.load_page(page_number)
-            
-            # Phase 1: Redaction and Deletion
+        for page in pdf_document:
             text_instances = page.search_for(old_text)
             
             if text_instances:
@@ -32,7 +31,6 @@ def replace_text_in_pdf(input_pdf_path, output_pdf_path, old_text, new_text):
                     page.add_redact_annot(rect)
                 page.apply_redactions()
 
-                # Phase 2: Text Insertion
                 for rect in text_instances:
                     original_fontsize = 12
                     for block in original_text_info:
@@ -52,20 +50,151 @@ def replace_text_in_pdf(input_pdf_path, output_pdf_path, old_text, new_text):
                         'fontsize': original_fontsize,
                         'fontname': font_name
                     }
-                    # Adjust baseline by subtracting a smaller value from y
                     insert_point = fitz.Point(rect.x0, rect.y1 + -2.3)
                     page.insert_text(insert_point, new_text, **font_params)
-                    
+        
+        # Create a unique output filename to avoid conflicts
+        unique_filename = f"modified_{uuid.uuid4().hex}.pdf"
+        output_pdf_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         pdf_document.save(output_pdf_path)
-        print(f"Successfully created '{output_pdf_path}' with text replaced.")
+        
+        return output_pdf_path
 
     except Exception as e:
         print(f"An error occurred: {e}")
+        return None
 
-# --- Example Usage ---
-input_file = "input.pdf"
-output_file = "modified.pdf"
-text_to_find = "SDTM"
-text_to_replace = "MTSD"
+@app.route('/')
+def index():
+    """Renders the main page."""
+    return render_template('index.html')
 
-replace_text_in_pdf(input_file, output_file, text_to_find, text_to_replace)
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Handles the file upload and text replacement."""
+    if 'pdf_file' not in request.files:
+        return "No file part", 400
+    
+    file = request.files['pdf_file']
+    old_text = request.form.get('old_text')
+    new_text = request.form.get('new_text')
+    
+    if file.filename == '':
+        return "No selected file", 400
+    
+    if file and old_text and new_text:
+        # Save the uploaded file temporarily
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+        
+        # Process the PDF
+        modified_pdf_path = replace_text_in_pdf(filepath, old_text, new_text)
+        
+        # Delete the original uploaded file to clean up
+        os.remove(filepath)
+        
+        if modified_pdf_path:
+            # Send the modified file for download
+            return send_file(modified_pdf_path, as_attachment=True, download_name="modified_document.pdf")
+        else:
+            return "An error occurred during PDF processing.", 500
+
+if __name__ == '__main__':
+    # You can set debug=True for development, but remove it in production
+    app.run(debug=True)
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Text Replacer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Text Replacer</h1>
+        <p>Find and replace text in your PDF documents.</p>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf-file-input">Select a PDF file:</label>
+                <input type="file" name="pdf_file" id="pdf-file-input" accept=".pdf" required />
+            </div>
+
+            <div class="form-group">
+                <label for="old_text">Text to Find:</label>
+                <input type="text" id="old_text" name="old_text" required />
+            </div>
+
+            <div class="form-group">
+                <label for="new_text">Text to Replace With:</label>
+                <input type="text" id="new_text" name="new_text" required />
+            </div>
+
+            <button type="submit">Replace Text</button>
+        </form>
+    </div>
+</body>
+</html>
