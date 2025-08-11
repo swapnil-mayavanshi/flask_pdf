@@ -1,90 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Text Replacer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:disabled {
+            background-color: #7daee7;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        /* Spinner styles */
+        .spinner {
+            display: none;
+            margin-top: 15px;
+            font-size: 14px;
+            color: #007bff;
+        }
+        .spinner:after {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 8px;
+            border: 2px solid #007bff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF Text Replacer</h1>
+        <p>Find and replace text in your PDF documents.</p>
+
+        <form id="pdfForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf-file-input">Select a PDF file:</label>
+                <input type="file" name="pdf_file" id="pdf-file-input" accept=".pdf" required />
+            </div>
+
+            <div class="form-group">
+                <label for="old_text">Text to Find:</label>
+                <input type="text" id="old_text" name="old_text" required />
+            </div>
+
+            <div class="form-group">
+                <label for="new_text">Text to Replace With:</label>
+                <input type="text" id="new_text" name="new_text" required />
+            </div>
+
+            <button type="submit" id="submitBtn">Replace Text</button>
+        </form>
+
+        <div class="spinner" id="loadingSpinner">Processing your PDF...</div>
+    </div>
+
+    <script>
+    const form = document.getElementById('pdfForm');
+    const spinner = document.getElementById('loadingSpinner');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        spinner.style.display = 'block'; // Show spinner
+        submitBtn.disabled = true; // Disable button
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Error processing PDF');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'modified_document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+        } catch (err) {
+            alert('Failed: ' + err.message);
+        } finally {
+            spinner.style.display = 'none'; // Hide spinner
+            submitBtn.disabled = false; // Re-enable button
+        }
+    });
+    </script>
+</body>
+</html>
+
+import fitz
 import os
-import tempfile
-import zipfile
 from flask import Flask, render_template, request, send_file
-import fitz  # PyMuPDF
-import pandas as pd
+import uuid
 
 app = Flask(__name__)
-UPLOAD_FOLDER = tempfile.gettempdir()
+app.config['SECRET_KEY'] = 'a_very_secret_key_for_session'
+
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- CONFIGURATION ---
-FONT_PATH = "times.ttf"  # You can ignore this if using built-in fonts
-PREFERRED_SIZE = 11       # Font size for inserted text
-EXPAND = 0                # Padding for redaction area
-Y_SHIFT = 10              # Vertical offset for inserted text
-UNDERLINE_OFFSET = 2      # How far below the text to draw underline
-UNDERLINE_THICKNESS = 1   # Thickness of the underline
-# ----------------------
+def replace_text_in_pdf(input_pdf_path, old_text, new_text):
+    try:
+        pdf_document = fitz.open(input_pdf_path)
+        font_name = "Times-Roman"
+        
+        for page in pdf_document:
+            text_instances = page.search_for(old_text)
+            
+            if text_instances:
+                original_text_info = page.get_text("dict")['blocks']
+                
+                for rect in text_instances:
+                    page.add_redact_annot(rect)
+                page.apply_redactions()
 
-def process_pdf(pdf_path, output_path, search_str, replace_str):
-    doc = fitz.open(pdf_path)
-    for page in doc:
-        areas = page.search_for(search_str)
-        expanded_areas = []
+                for rect in text_instances:
+                    original_fontsize = 12
+                    for block in original_text_info:
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                if old_text in span["text"]:
+                                    original_fontsize = span["size"]
+                                    break
+                            else:
+                                continue
+                            break
+                        else:
+                            continue
+                        break
 
-        for area in areas:
-            expanded_area = fitz.Rect(
-                area.x0 - EXPAND,
-                area.y0 - EXPAND,
-                area.x1 + EXPAND,
-                area.y1 + EXPAND
-            )
-            page.add_redact_annot(expanded_area, fill=(1, 1, 1))  # White background
-            expanded_areas.append((area, expanded_area))
+                    font_params = {
+                        'fontsize': original_fontsize,
+                        'fontname': font_name
+                    }
+                    insert_point = fitz.Point(rect.x0, rect.y1 + -2.3)
+                    page.insert_text(insert_point, new_text, **font_params)
+        
+        unique_filename = f"modified_{uuid.uuid4().hex}.pdf"
+        output_pdf_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        pdf_document.save(output_pdf_path)
+        
+        return output_pdf_path
 
-        page.apply_redactions()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
 
-        for original_area, _ in expanded_areas:
-            new_position = fitz.Point(original_area.x0, original_area.y0 + Y_SHIFT)
-            page.insert_text(new_position, replace_str, fontsize=PREFERRED_SIZE, fontname="times-roman", color=(0, 0, 0))
-
-            # Draw underline
-            underline_y = new_position.y + UNDERLINE_OFFSET
-            underline_start = fitz.Point(original_area.x0, underline_y)
-            underline_end = fitz.Point(original_area.x0 + page.get_text_length(replace_str, fontname="times-roman", fontsize=PREFERRED_SIZE), underline_y)
-            page.draw_line(underline_start, underline_end, color=(0, 0, 0), width=UNDERLINE_THICKNESS)
-
-    doc.save(output_path)
-    doc.close()
-    return output_path
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    if request.method == 'POST':
-        search_str = request.form['search_str']
-        replace_str = request.form['replace_str']
+    return render_template('index.html')
 
-        temp_dir = tempfile.mkdtemp()
-        uploaded_file = request.files['data_file']
-        file_ext = os.path.splitext(uploaded_file.filename)[1].lower()
-        processed_files = []
-
-        def process_one(data_path, filename):
-            ext = os.path.splitext(filename)[1].lower()
-            base = os.path.splitext(os.path.basename(filename))[0]
-            if ext == '.pdf':
-                outpath = os.path.join(temp_dir, f"{base}_replaced.pdf")
-                process_pdf(data_path, outpath, search_str, replace_str)
-                return outpath
-            else:
-                return None
-
-        file_path = os.path.join(temp_dir, uploaded_file.filename)
-        uploaded_file.save(file_path)
-        out = process_one(file_path, uploaded_file.filename)
-        if out:
-            processed_files.append(out)
-
-        zip_path = os.path.join(temp_dir, "replaced_files.zip")
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zout:
-            for f in processed_files:
-                zout.write(f, arcname=os.path.basename(f))
-
-        return send_file(zip_path, as_attachment=True, download_name="replaced_files.zip")
-
-    return render_template('index_multi_simple.html')
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'pdf_file' not in request.files:
+        return "No file part", 400
+    
+    file = request.files['pdf_file']
+    old_text = request.form.get('old_text')
+    new_text = request.form.get('new_text')
+    
+    if file.filename == '':
+        return "No selected file", 400
+    
+    if file and old_text and new_text:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+        
+        modified_pdf_path = replace_text_in_pdf(filepath, old_text, new_text)
+        
+        os.remove(filepath)
+        
+        if modified_pdf_path:
+            return send_file(
+                modified_pdf_path,
+                as_attachment=True,
+                download_name="modified_document.pdf"
+            )
+        else:
+            return "An error occurred during PDF processing.", 500
 
 if __name__ == '__main__':
     app.run(debug=True)
+
