@@ -14,11 +14,13 @@ def replace_text_in_pdf(input_pdf_path, old_text, new_text):
     try:
         pdf_document = fitz.open(input_pdf_path)
         font_name = "Times-Roman"
+        text_found = False
         
         for page in pdf_document:
             text_instances = page.search_for(old_text)
             
             if text_instances:
+                text_found = True
                 original_text_info = page.get_text("dict")['blocks']
                 
                 for rect in text_instances:
@@ -44,9 +46,12 @@ def replace_text_in_pdf(input_pdf_path, old_text, new_text):
                         'fontsize': original_fontsize,
                         'fontname': font_name
                     }
-                    insert_point = fitz.Point(rect.x0, rect.y1 + -2.3)
+                    insert_point = fitz.Point(rect.x0, rect.y1 - 2.3)
                     page.insert_text(insert_point, new_text, **font_params)
         
+        if not text_found:
+            print(f"No occurrences of '{old_text}' found — returning original PDF")
+
         unique_filename = f"modified_{uuid.uuid4().hex}.pdf"
         output_pdf_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         pdf_document.save(output_pdf_path)
@@ -73,22 +78,19 @@ def upload_file():
     if file.filename == '':
         return "No selected file", 400
     
-    if file and old_text and new_text:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
-        
-        modified_pdf_path = replace_text_in_pdf(filepath, old_text, new_text)
-        
-        os.remove(filepath)
-        
-        if modified_pdf_path:
-            return send_file(
-                modified_pdf_path,
-                as_attachment=True,
-                download_name="modified_document.pdf"
-            )
-        else:
-            return "An error occurred during PDF processing.", 500
+    if not old_text or not new_text:
+        return "Text fields required", 400
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+    file.save(filepath)
+
+    modified_pdf_path = replace_text_in_pdf(filepath, old_text, new_text)
+    os.remove(filepath)
+
+    if not modified_pdf_path:
+        return "An error occurred during PDF processing.", 500
+
+    return send_file(modified_pdf_path, as_attachment=True, download_name="modified_document.pdf")
 
 if __name__ == '__main__':
     app.run(debug=True)
