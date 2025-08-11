@@ -22,7 +22,6 @@
             width: 100%;
             max-width: 400px;
             text-align: center;
-            position: relative;
         }
         h1 {
             color: #333;
@@ -67,7 +66,6 @@
         button:hover:not(:disabled) {
             background-color: #0056b3;
         }
-        /* Spinner styles */
         .spinner {
             display: none;
             margin-top: 15px;
@@ -103,12 +101,12 @@
 
             <div class="form-group">
                 <label for="old_text">Text to Find:</label>
-                <input type="text" id="old_text" name="old_text" required />
+                <input type="text" name="old_text" id="old_text" required />
             </div>
 
             <div class="form-group">
                 <label for="new_text">Text to Replace With:</label>
-                <input type="text" id="new_text" name="new_text" required />
+                <input type="text" name="new_text" id="new_text" required />
             </div>
 
             <button type="submit" id="submitBtn">Replace Text</button>
@@ -126,8 +124,8 @@
         e.preventDefault();
 
         const formData = new FormData(this);
-        spinner.style.display = 'block'; // Show spinner
-        submitBtn.disabled = true; // Disable button
+        spinner.style.display = 'block';
+        submitBtn.disabled = true;
 
         try {
             const response = await fetch('/upload', {
@@ -136,7 +134,8 @@
             });
 
             if (!response.ok) {
-                throw new Error('Error processing PDF');
+                const errorText = await response.text();
+                throw new Error(errorText);
             }
 
             const blob = await response.blob();
@@ -153,11 +152,10 @@
         } catch (err) {
             alert('Failed: ' + err.message);
         } finally {
-            spinner.style.display = 'none'; // Hide spinner
-            submitBtn.disabled = false; // Re-enable button
+            spinner.style.display = 'none';
+            submitBtn.disabled = false;
         }
     });
     </script>
 </body>
 </html>
-
