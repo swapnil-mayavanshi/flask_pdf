@@ -1,142 +1,115 @@
-import fitz  # PyMuPDF
 import os
+import fitz  # PyMuPDF
 import pandas as pd
 import xml.etree.ElementTree as ET
-import tempfile
+import pyreadstat
 import uuid
 
-# Replace text in PDF
+
+# ---------------- PDF Processing ----------------
 def replace_text_in_pdf(input_pdf_path, old_text, new_text):
-    try:
-        pdf_document = fitz.open(input_pdf_path)
-        font_name = "Times-Roman"
+    pdf_document = fitz.open(input_pdf_path)
+    font_name = "Times-Roman"
 
-        for page in pdf_document:
-            text_instances = page.search_for(old_text)
+    for page in pdf_document:
+        text_instances = page.search_for(old_text)
+        if text_instances:
+            original_text_info = page.get_text("dict")['blocks']
 
-            if text_instances:
-                original_text_info = page.get_text("dict")['blocks']
+            for rect in text_instances:
+                page.add_redact_annot(rect)
+            page.apply_redactions()
 
-                # Remove old text
-                for rect in text_instances:
-                    page.add_redact_annot(rect)
-                page.apply_redactions()
-
-                # Insert new text
-                for rect in text_instances:
-                    original_fontsize = 12
-                    for block in original_text_info:
-                        for line in block.get("lines", []):
-                            for span in line.get("spans", []):
-                                if old_text in span["text"]:
-                                    original_fontsize = span["size"]
-                                    break
-                            else:
-                                continue
-                            break
+            for rect in text_instances:
+                original_fontsize = 12
+                for block in original_text_info:
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            if old_text in span["text"]:
+                                original_fontsize = span["size"]
+                                break
                         else:
                             continue
                         break
+                    else:
+                        continue
+                    break
 
-                    font_params = {
-                        'fontsize': original_fontsize,
-                        'fontname': font_name
-                    }
-                    insert_point = fitz.Point(rect.x0, rect.y1 - 2.3)
-                    page.insert_text(insert_point, new_text, **font_params)
+                font_params = {
+                    'fontsize': original_fontsize,
+                    'fontname': font_name
+                }
+                insert_point = fitz.Point(rect.x0, rect.y1 - 2.3)
+                page.insert_text(insert_point, new_text, **font_params)
 
-        output_pdf_path = os.path.join(
-            os.path.dirname(input_pdf_path),
-            f"{os.path.splitext(os.path.basename(input_pdf_path))[0]}_modified.pdf"
-        )
-        pdf_document.save(output_pdf_path)
-        pdf_document.close()
-
-        print(f"PDF modified: {output_pdf_path}")
-        return output_pdf_path
-
-    except Exception as e:
-        print(f"Error in PDF processing: {e}")
-        return None
+    output_pdf_path = os.path.join(
+        os.path.dirname(input_pdf_path),
+        f"{os.path.splitext(os.path.basename(input_pdf_path))[0]}_modified.pdf"
+    )
+    pdf_document.save(output_pdf_path)
+    pdf_document.close()
+    print(f"PDF modified: {output_pdf_path}")
+    return output_pdf_path
 
 
-# Replace text in CSV
+# ---------------- CSV Processing ----------------
 def replace_text_in_csv(input_csv_path, old_text, new_text):
-    try:
-        df = pd.read_csv(input_csv_path, dtype=str)  # Read all as string to avoid loss
-        df = df.applymap(lambda x: x.replace(old_text, new_text) if isinstance(x, str) else x)
+    df = pd.read_csv(input_csv_path, dtype=str)
+    df = df.applymap(lambda x: x.replace(old_text, new_text) if isinstance(x, str) else x)
 
-        output_csv_path = os.path.join(
-            os.path.dirname(input_csv_path),
-            f"{os.path.splitext(os.path.basename(input_csv_path))[0]}_modified.csv"
-        )
-        df.to_csv(output_csv_path, index=False)
-        print(f"CSV modified: {output_csv_path}")
-        return output_csv_path
-    except Exception as e:
-        print(f"Error in CSV processing: {e}")
-        return None
+    output_csv_path = os.path.join(
+        os.path.dirname(input_csv_path),
+        f"{os.path.splitext(os.path.basename(input_csv_path))[0]}_modified.csv"
+    )
+    df.to_csv(output_csv_path, index=False)
+    print(f"CSV modified: {output_csv_path}")
+    return output_csv_path
 
 
-# Replace text in XML
+# ---------------- XML Processing ----------------
 def replace_text_in_xml(input_xml_path, old_text, new_text):
-    try:
-        tree = ET.parse(input_xml_path)
-        root = tree.getroot()
+    tree = ET.parse(input_xml_path)
+    root = tree.getroot()
 
-        def replace_in_element(elem):
-            if elem.text and old_text in elem.text:
-                elem.text = elem.text.replace(old_text, new_text)
-            if elem.tail and old_text in elem.tail:
-                elem.tail = elem.tail.replace(old_text, new_text)
-            for k, v in elem.attrib.items():
-                if old_text in v:
-                    elem.attrib[k] = v.replace(old_text, new_text)
-            for child in elem:
-                replace_in_element(child)
+    def replace_in_element(elem):
+        if elem.text and old_text in elem.text:
+            elem.text = elem.text.replace(old_text, new_text)
+        if elem.tail and old_text in elem.tail:
+            elem.tail = elem.tail.replace(old_text, new_text)
+        for k, v in elem.attrib.items():
+            if old_text in v:
+                elem.attrib[k] = v.replace(old_text, new_text)
+        for child in elem:
+            replace_in_element(child)
 
-        replace_in_element(root)
+    replace_in_element(root)
 
-        output_xml_path = os.path.join(
-            os.path.dirname(input_xml_path),
-            f"{os.path.splitext(os.path.basename(input_xml_path))[0]}_modified.xml"
-        )
-        tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
-        print(f"XML modified: {output_xml_path}")
-        return output_xml_path
-    except Exception as e:
-        print(f"Error in XML processing: {e}")
-        return None
+    output_xml_path = os.path.join(
+        os.path.dirname(input_xml_path),
+        f"{os.path.splitext(os.path.basename(input_xml_path))[0]}_modified.xml"
+    )
+    tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
+    print(f"XML modified: {output_xml_path}")
+    return output_xml_path
 
 
-# Replace text in XPT (SAS Transport)
+# ---------------- XPT Processing with pyreadstat ----------------
 def replace_text_in_xpt(input_xpt_path, old_text, new_text):
-    try:
-        # Read the XPT file
-        df = pd.read_sas(input_xpt_path, format="xport", encoding="utf-8")
-        df = df.applymap(lambda x: x.decode("utf-8") if isinstance(x, bytes) else x)  # Convert bytes to string
-        df = df.applymap(lambda x: x.replace(old_text, new_text) if isinstance(x, str) else x)
+    df, meta = pyreadstat.read_xport(input_xpt_path)
+    df = df.applymap(lambda x: x.replace(old_text, new_text) if isinstance(x, str) else x)
 
-        output_xpt_path = os.path.join(
-            os.path.dirname(input_xpt_path),
-            f"{os.path.splitext(os.path.basename(input_xpt_path))[0]}_modified.xpt"
-        )
-
-        # Save back to XPT
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp_csv_path = tmp.name + ".csv"
-            df.to_csv(tmp_csv_path, index=False)
-            # Note: Writing back to XPT directly requires SAS tools; here we save CSV as intermediate
-            print(f"XPT modified (saved as CSV at): {tmp_csv_path}")
-        return output_xpt_path
-    except Exception as e:
-        print(f"Error in XPT processing: {e}")
-        return None
+    output_xpt_path = os.path.join(
+        os.path.dirname(input_xpt_path),
+        f"{os.path.splitext(os.path.basename(input_xpt_path))[0]}_modified.xpt"
+    )
+    pyreadstat.write_xport(df, output_xpt_path, file_format_version=8, table_name=meta.table_name)
+    print(f"XPT modified: {output_xpt_path}")
+    return output_xpt_path
 
 
-# Main function
+# ---------------- Main Execution ----------------
 if __name__ == "__main__":
-    file_path = r"C:\path\to\your\file.pdf"  # Can be .pdf, .csv, .xml, or .xpt
+    file_path = r"C:\path\to\your\file.pdf"  # Change this to your file path
     old_text = "OldWord"
     new_text = "NewWord"
 
@@ -151,4 +124,4 @@ if __name__ == "__main__":
     elif ext == ".xpt":
         replace_text_in_xpt(file_path, old_text, new_text)
     else:
-        print(f"Unsupported file format: {ext}")
+        print(f"Unsupported file type: {ext}")
